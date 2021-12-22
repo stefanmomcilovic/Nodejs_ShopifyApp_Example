@@ -195,10 +195,17 @@ sequelize.sync()
             ctx.redirect(`/auth?shop=${shop}`);
           }
 
+          if(ctx.session.userData == undefined){
             ctx.session.userData = {
               shop: user[0].shop,
               accessToken: user[0].accessToken
             };
+          }else{
+            ctx.session.userData = {
+              shop: user[0].shop,
+              accessToken: user[0].accessToken
+            };
+          }
           
           await handleRequest(ctx);
 
