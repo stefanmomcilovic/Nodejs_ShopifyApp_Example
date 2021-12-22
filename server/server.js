@@ -129,26 +129,52 @@ sequelize.sync()
       );
 
       router.post("/api", async (ctx) => {
+        const action = `${ctx.request.body.data.action}`;
         const { shop, accessToken } = ctx.session.userData;
+        let client;
+        let data;
 
-        const client = new Shopify.Clients.Graphql(shop, accessToken);
-        const data = await client.query({
-          data: `{
-            products(first: 250) {
-              edges {
-                node {
-                  id
-                  title
-                  handle
+        switch (action) {
+          case "GraphQL":
+             client = new Shopify.Clients.Graphql(shop, accessToken);
+             data = await client.query({
+              data: `{
+                products(first: 250) {
+                  edges {
+                    node {
+                      id
+                      title
+                      handle
+                    }
+                  }
                 }
-              }
-            }
-          }`,
-        });
+              }`,
+            });
 
-        ctx.res.statusCode = 200;
-        ctx.body = {
-          allProducts: data
+            ctx.res.statusCode = 200;
+            ctx.body = {
+              allProducts: data
+            }
+          break;
+
+          case "RESTAPI":
+            client = new Shopify.Clients.Rest(shop, accessToken);
+            data = await client.get({
+              path: 'products',
+            });
+
+            ctx.res.statusCode = 200;
+            ctx.body = {
+              allProducts: data
+            }
+          break;
+        
+          default:
+            ctx.res.statusCode = 500;
+            ctx.body = {
+              error: "Invalid action"
+            };
+          break;
         }
       });
 
@@ -169,14 +195,13 @@ sequelize.sync()
             ctx.redirect(`/auth?shop=${shop}`);
           }
 
-          if(ctx.session.userData == undefined){
             ctx.session.userData = {
               shop: user[0].shop,
               accessToken: user[0].accessToken
             };
-          }
           
           await handleRequest(ctx);
+
           // if (ACTIVE_SHOPIFY_SHOPS[shop] == undefined) {
           //   ctx.redirect(`/auth?shop=${shop}`);
           // } else {
