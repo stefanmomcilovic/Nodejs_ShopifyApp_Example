@@ -8,6 +8,7 @@ import next from "next";
 import Router from "koa-router";
 import bodyParser from "koa-bodyparser";
 import session from "koa-session";
+import cookies from "koa-cookie";
 
 import { storeCallback, loadCallback, deleteCallback } from "./custom-session";
 const sequelize = require("./database/database");
@@ -45,6 +46,7 @@ sequelize.sync()
 
       server.use(bodyParser());
       server.use(session(server));
+      server.use(cookies());
 
       server.keys = [Shopify.Context.API_SECRET_KEY];
 
@@ -52,7 +54,7 @@ sequelize.sync()
         createShopifyAuth({
           async afterAuth(ctx) {
             // Access token and shop available in ctx.state.shopify
-            const { shop, accessToken, scope } = ctx.state.shopify;
+            const { shop, accessToken } = ctx.state.shopify;
             const host = ctx.query.host;
 
             // Getting users data from database and saving it to variable //
@@ -130,7 +132,9 @@ sequelize.sync()
 
       router.post("/api", async (ctx) => {
         const action = `${ctx.request.body.data.action}`;
-        const { shop, accessToken } = ctx.session.userData;
+        const shop = ctx.cookies.get("shop");
+        const accessToken = ctx.cookies.get("accessToken");
+
         let client;
         let data;
 
@@ -190,25 +194,16 @@ sequelize.sync()
               },
               limit:1
             });
+
           //This shop hasn't been seen yet, go through OAuth to create a sessrsion
           if (user.length == 0 || user[0].shop == undefined) {
             ctx.redirect(`/auth?shop=${shop}`);
-          }
-
-          if(ctx.session.userData == undefined){
-            ctx.session.userData = {
-              shop: user[0].shop,
-              accessToken: user[0].accessToken
-            };
           }else{
-            ctx.session.userData = {
-              shop: user[0].shop,
-              accessToken: user[0].accessToken
-            };
+            ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none", secureProxy: true });
+            ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none", secureProxy: true });
+            await handleRequest(ctx);
           }
           
-          await handleRequest(ctx);
-
           // if (ACTIVE_SHOPIFY_SHOPS[shop] == undefined) {
           //   ctx.redirect(`/auth?shop=${shop}`);
           // } else {
