@@ -9,11 +9,10 @@ import Router from "koa-router";
 import bodyParser from "koa-bodyparser";
 import session from "koa-session";
 import cookies from "koa-cookie";
-
 import { storeCallback, loadCallback, deleteCallback } from "./custom-session";
+import { route } from "next/dist/next-server/server/router";
 const sequelize = require("./database/database");
 const { Shopify_custom_session_storage } = require("./../models/sequelizeModels");
-
 
 sequelize.sync()
   .then(() => {
@@ -45,8 +44,8 @@ sequelize.sync()
       const router = new Router();
 
       server.use(bodyParser());
-      server.use(session(server));
       server.use(cookies());
+      server.use(session({secure:true}, server));
 
       server.keys = [Shopify.Context.API_SECRET_KEY];
 
@@ -56,7 +55,6 @@ sequelize.sync()
             // Access token and shop available in ctx.state.shopify
             const { shop, accessToken } = ctx.state.shopify;
             const host = ctx.query.host;
-
             // Getting users data from database and saving it to variable //
               try {
                 let user = await Shopify_custom_session_storage.findAll({
@@ -80,7 +78,7 @@ sequelize.sync()
               topic: "APP_UNINSTALLED",
               webhookHandler: async (topic, shop, body) =>{
                 // return delete ACTIVE_SHOPIFY_SHOPS[shop];
-                return await Shopify_custom_session_storage.destroy({
+                Shopify_custom_session_storage.destroy({
                   where: {
                     shop: shop
                   }
@@ -106,6 +104,36 @@ sequelize.sync()
           },
         })
       );
+      // Puting user data in state 
+      server.use(async (ctx, next) => {
+        try{
+          if(ctx.state.userData == null || ctx.state.userData == undefined){
+            const referer  = ctx.request.header.referer;
+            const urlParams = new URLSearchParams(referer);
+            const shopData =  urlParams.get('shop');
+            if(shopData != null && shopData != undefined){
+              let user = await Shopify_custom_session_storage.findAll({
+                raw: true,
+                where:{
+                  shop: shopData
+                },
+                limit:1
+              });
+
+              if(user.length > 0){
+                ctx.state.userData = {
+                  shop: shopData,
+                  accessToken: user[0].accessToken
+                };
+              }
+            }
+          }
+          await next();
+        }catch(err) {
+          ctx.status = 500;
+          ctx.body = "State is not available!";
+        }
+      }); 
       
       const handleRequest = async (ctx) => {
         await handle(ctx.req, ctx.res);
@@ -131,60 +159,72 @@ sequelize.sync()
       );
 
       router.post("/api", async (ctx) => {
-        const action = `${ctx.request.body.data.action}`;
-        const shop = ctx.cookies.get("shop");
-        const accessToken = ctx.cookies.get("accessToken");
+        try{
+          const action = `${ctx.request.body.data.action}`;
+          const { shop, accessToken } = ctx.state.userData;
 
-        let client;
-        let data;
+          let client;
+          let data;
 
-        switch (action) {
-          case "GraphQL":
-             client = new Shopify.Clients.Graphql(shop, accessToken);
-             data = await client.query({
-              data: `{
-                products(first: 250) {
-                  edges {
-                    node {
-                      id
-                      title
-                      handle
+          switch (action) {
+            case "GraphQL":
+              client = new Shopify.Clients.Graphql(shop, accessToken);
+              data = await client.query({
+                data: `{
+                  products(first: 250) {
+                    edges {
+                      node {
+                        id
+                        title
+                        handle
+                      }
                     }
                   }
-                }
-              }`,
-            });
+                }`,
+              });
 
-            ctx.res.statusCode = 200;
-            ctx.body = {
-              allProducts: data
-            }
-          break;
+              ctx.status = 200;
+              ctx.body = {
+                allProducts: data
+              }
+            break;
 
-          case "RESTAPI":
-            client = new Shopify.Clients.Rest(shop, accessToken);
-            data = await client.get({
-              path: 'products',
-            });
+            case "RESTAPI":
+              client = new Shopify.Clients.Rest(shop, accessToken);
+              data = await client.get({
+                path: 'products',
+              });
 
-            ctx.res.statusCode = 200;
-            ctx.body = {
-              allProducts: data
-            }
-          break;
-        
-          default:
-            ctx.res.statusCode = 500;
-            ctx.body = {
-              error: "Invalid action"
-            };
-          break;
+              ctx.status = 200;
+              ctx.body = {
+                allProducts: data
+              }
+            break;
+            default:
+              ctx.status = 400;
+              ctx.body = "Invalid action!";
+            break;
+          }
+        }catch(err){
+          ctx.status = 400;
+          ctx.body = "Something went wrong, please try again later!";
+        }
+      });
+
+      // Handling errors //
+      server.use(async (ctx, next) => {
+        try {
+          await next();
+        } catch (err) {
+          ctx.status = err.statusCode || err.status || 500;
+          ctx.body = err.message;
+          ctx.app.emit('error', err, ctx);
         }
       });
 
       router.get("(/_next/static/.*)", handleRequest); // Static content is clear
       router.get("/_next/webpack-hmr", handleRequest); // Webpack content is clear
-      router.get("(.*)", async (ctx) => {
+      router.get("(.*)", async function (ctx, next){
         try {
           const shop = ctx.query.shop;
           let user = await Shopify_custom_session_storage.findAll({
@@ -199,8 +239,8 @@ sequelize.sync()
           if (user.length == 0 || user[0].shop == undefined) {
             ctx.redirect(`/auth?shop=${shop}`);
           }else{
-            ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none", secureProxy: true });
-            ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none", secureProxy: true });
+            // ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none"});
+            // ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none" });
             await handleRequest(ctx);
           }
           

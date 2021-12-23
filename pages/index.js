@@ -1,26 +1,27 @@
 import { Heading, Page, Button } from "@shopify/polaris";
-
+import axios from 'axios';
 
 function Index(props){
       async function getProductsWithGraphQL(){
-        const res = await props.axios.post("/api", {
-          data: {
-            action: "GraphQL"
-          }
-        });
-        console.log(res);
+        try{
+          const res = await axios.post("/api");
+          console.log(res);
+        }catch(err){
+          console.log(err.response.data);
+        }
       }
       
       async function getProductsWithRESTAPI(){
-        const res = await props.axios.post("/api", {
-          data: {
-            action: "RESTAPI"
-          }
-        });
-        console.log(res);
+        try{
+          const res = await axios.post("/api", {
+            data: { action: "RESTAPI" }
+          });
+          console.log(res);
+        }catch(err){
+          console.log(err.response.data);
+        }
       }
 
-  
     return (
       <Page>
         <Heading>Shopify app with Node and React </Heading>
