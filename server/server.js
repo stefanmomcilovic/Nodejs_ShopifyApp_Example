@@ -132,7 +132,8 @@ sequelize.sync()
                 }
               } catch(err) {
                 console.log(err);
-                throw err;
+                ctx.status = 500;
+                ctx.body = "Something went wrong, please try again later!";
               }
             //  End of Getting users data from database and saving it to variable //
           },
