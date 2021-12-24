@@ -87,6 +87,11 @@ sequelize.sync()
                     },
                     limit:1
                   });
+                  if(user){
+                    return true;
+                  }else{
+                    return false;
+                  }
               } catch(err) {
                 console.log(err);
                 throw err;
