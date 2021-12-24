@@ -12,11 +12,13 @@ import cookies from "koa-cookie";
 import compress from "koa-compress";
 import logger from "koa-logger";
 import cors from "koa-cors";
+import "isomorphic-fetch";
+import { gql } from "apollo-boost";
 
 import { storeCallback, loadCallback, deleteCallback } from "./custom-session";
 import { createClient, getSubscriptionUrl } from "./handlers/index";
 const sequelize = require("./database/database");
-const { Shopify_custom_session_storage } = require("./../models/sequelizeModels");
+const { Shopify_custom_session_storage, Shopify_billings } = require("./../models/sequelizeModels");
 
 sequelize.sync()
   .then(() => {
@@ -74,6 +76,8 @@ sequelize.sync()
             // Access token and shop available in ctx.state.shopify
             const { shop, accessToken } = ctx.state.shopify;
             const host = ctx.query.host;
+            ctx.session.shop = shop;
+            ctx.session.host = host;
             // Getting users data from database and saving it to variable //
               try {
                 let user = await Shopify_custom_session_storage.findAll({
@@ -103,11 +107,14 @@ sequelize.sync()
                   }
                 });
 
-                if(user.length > 0){
-                  return true;
-                }
+                let billing = await Shopify_billings.destroy({
+                  where: {
+                    shop: shop
+                  }
+                });
 
-                return false;               
+                console.log("USER:", user);           
+                console.log("billing:", billing);           
               }
             });
 
@@ -118,9 +125,9 @@ sequelize.sync()
             }
 
             // Redirect to app with shop parameter upon auth
-            // server.context.client = await createClient(shop, accessToken);
-            // await getSubscriptionUrl(ctx);
-            ctx.redirect(`/?shop=${shop}&host=${host}`);
+            server.context.client = await createClient(shop, accessToken);
+            await getSubscriptionUrl(ctx);
+            // ctx.redirect(`/?shop=${shop}&host=${host}`);
           },
         })
       );
@@ -257,27 +264,63 @@ sequelize.sync()
       router.get("/_next/webpack-hmr", handleRequest); // Webpack content is clear
       router.get("(.*)", async function (ctx, next){
         try {
-          const shop = ctx.query.shop;
-          let user = await Shopify_custom_session_storage.findAll({
-            raw: true,
-            where:{
-              shop: shop
-            },
-            limit:1
-          });
-          //This shop hasn't been seen yet, go through OAuth to create a sessrsion
-          if (user.length == 0 || user[0].shop == undefined) {
-            ctx.redirect(`/auth?shop=${shop}`);
+          if(ctx.query.charge_id != null && ctx.query.charge_id != undefined){
+            let query = gql`
+              query {
+                node(id: "gid://shopify/AppSubscription/${ctx.query.charge_id}") {
+                  ... on AppSubscription {
+                    status
+                    id
+                    createdAt
+                    returnUrl
+                    trialDays
+                  }
+                }
+              }
+            `;
+
+            let charge = await server.context.client.query({
+              query: query
+            });
+
+            if(charge.data.node.status == "ACTIVE"){
+              let billing_table_query =  await Shopify_billings.upsert({
+                chargeId: ctx.query.charge_id,
+                shop: ctx.session.shop,
+                status: charge.data.node.status,
+                gid: charge.data.node.id,
+              });
+
+              if(billing_table_query){
+                ctx.redirect(`/?shop=${ctx.session.shop}&host=${ctx.session.host}`);
+              }
+            }else{
+              ctx.status = 401;
+              ctx.message = "You didn't subscribe to our app!";
+            }
           }else{
-            // ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none"});
-            // ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none" });
-            await handleRequest(ctx);
+            const shop = ctx.query.shop || ctx.session.shop;
+            let user = await Shopify_custom_session_storage.findAll({
+              raw: true,
+              where:{
+                shop: shop
+              },
+              limit:1
+            });
+            //This shop hasn't been seen yet, go through OAuth to create a sessrsion
+            if (user.length == 0 || user[0].shop == undefined) {
+              ctx.redirect(`/auth?shop=${shop}`);
+            }else{
+              // ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none"});
+              // ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none" });
+              await handleRequest(ctx);
+            }
+            // if (ACTIVE_SHOPIFY_SHOPS[shop] == undefined) {
+            //   ctx.redirect(`/auth?shop=${shop}`);
+            // } else {
+            //   await handleRequest(ctx);
+            // }
           }
-          // if (ACTIVE_SHOPIFY_SHOPS[shop] == undefined) {
-          //   ctx.redirect(`/auth?shop=${shop}`);
-          // } else {
-          //   await handleRequest(ctx);
-          // }
         } catch(err) {
           console.log(err);
           ctx.status = 500;
