@@ -118,9 +118,9 @@ sequelize.sync()
             }
 
             // Redirect to app with shop parameter upon auth
-            server.context.client = await createClient(shop, accessToken);
-            await getSubscriptionUrl(ctx);
-            // ctx.redirect(`/?shop=${shop}&host=${host}`);
+            // server.context.client = await createClient(shop, accessToken);
+            // await getSubscriptionUrl(ctx);
+            ctx.redirect(`/?shop=${shop}&host=${host}`);
           },
         })
       );
