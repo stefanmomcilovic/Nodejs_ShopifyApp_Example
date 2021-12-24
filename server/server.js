@@ -12,19 +12,6 @@ import cookies from "koa-cookie";
 import compress from "koa-compress";
 import logger from "koa-logger";
 import cors from "koa-cors";
-const protectCfg = {
-  production: process.env.NODE_ENV === 'production', // if production is false, detailed error messages are exposed to the client
-  clientRetrySecs: 1, // Retry-After header, in seconds (0 to disable) [default 1]
-  sampleInterval: 5, // sample rate, milliseconds [default 5]
-  maxEventLoopDelay: 42, // maximum detected delay between event loop ticks [default 42]
-  maxHeapUsedBytes: 0, // maximum heap used threshold (0 to disable) [default 0]
-  maxRssBytes: 0, // maximum rss size threshold (0 to disable) [default 0]
-  errorPropagationMode: false, // dictate behavior: take over the response 
-                              // or propagate an error to the framework [default false]
-  logging: false, // set to string for log level or function to pass data to
-  logStatsOnReq: false // set to true to log stats on every requests
-};
-const protect = require('overload-protection')('koa', protectCfg);
 
 import { storeCallback, loadCallback, deleteCallback } from "./custom-session";
 import { createClient, getSubscriptionUrl } from "./handlers/index";
@@ -61,7 +48,6 @@ sequelize.sync()
       const router = new Router();
 
       server.use(cors());
-      server.use(protect);
       server.use(bodyParser());
       server.use(cookies());
       server.use(session({secure:true}, server));
@@ -132,9 +118,9 @@ sequelize.sync()
             }
 
             // Redirect to app with shop parameter upon auth
-            // server.context.client = await createClient(shop, accessToken);
-            // await getSubscriptionUrl(ctx);
-            ctx.redirect(`/?shop=${shop}&host=${host}`);
+            server.context.client = await createClient(shop, accessToken);
+            await getSubscriptionUrl(ctx);
+            // ctx.redirect(`/?shop=${shop}&host=${host}`);
           },
         })
       );
@@ -272,14 +258,14 @@ sequelize.sync()
       router.get("(.*)", async function (ctx, next){
         try {
           const shop = ctx.query.shop;
-            let user = await Shopify_custom_session_storage.findAll({
-              raw: true,
-              where:{
-                shop: shop
-              },
-              limit:1
-            });
-            //This shop hasn't been seen yet, go through OAuth to create a sessrsion
+          let user = await Shopify_custom_session_storage.findAll({
+            raw: true,
+            where:{
+              shop: shop
+            },
+            limit:1
+          });
+          //This shop hasn't been seen yet, go through OAuth to create a sessrsion
           if (user.length == 0 || user[0].shop == undefined) {
             ctx.redirect(`/auth?shop=${shop}`);
           }else{
