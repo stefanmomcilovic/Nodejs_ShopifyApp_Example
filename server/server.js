@@ -87,52 +87,54 @@ sequelize.sync()
                     },
                     limit:1
                   });
-                  if(user){
-                    return true;
-                  }else{
-                    return false;
+       
+                  // ACTIVE_SHOPIFY_SHOPS[shop] = scope;
+
+                const response = await Shopify.Webhooks.Registry.register({
+                  shop,
+                  accessToken,
+                  path: "/webhooks",
+                  topic: "APP_UNINSTALLED",
+                  webhookHandler: async (topic, shop, body) =>{
+                    // return delete ACTIVE_SHOPIFY_SHOPS[shop];
+                    let user = await Shopify_custom_session_storage.destroy({
+                      where: {
+                        shop: shop
+                      }
+                    });
+
+                    let billing = await Shopify_billings.destroy({
+                      where: {
+                        shop: shop
+                      }
+                    });
+
+                    console.log("USER:", user);           
+                    console.log("billing:", billing);           
                   }
+                });
+
+                if (!response.success) {
+                  console.log(
+                    `Failed to register APP_UNINSTALLED webhook: ${response.result}`
+                  );
+                }
+
+                // Redirect to app with shop parameter upon auth
+                server.context.client = await createClient(shop, accessToken);
+                await getSubscriptionUrl(ctx);
+                // ctx.redirect(`/?shop=${shop}&host=${host}`);
+
+                if(user){
+                  return true;
+                }else{
+                  return false;
+                }
               } catch(err) {
                 console.log(err);
                 throw err;
               }
             //  End of Getting users data from database and saving it to variable //
-            // ACTIVE_SHOPIFY_SHOPS[shop] = scope;
-
-            const response = await Shopify.Webhooks.Registry.register({
-              shop,
-              accessToken,
-              path: "/webhooks",
-              topic: "APP_UNINSTALLED",
-              webhookHandler: async (topic, shop, body) =>{
-                // return delete ACTIVE_SHOPIFY_SHOPS[shop];
-                let user = await Shopify_custom_session_storage.destroy({
-                  where: {
-                    shop: shop
-                  }
-                });
-
-                let billing = await Shopify_billings.destroy({
-                  where: {
-                    shop: shop
-                  }
-                });
-
-                console.log("USER:", user);           
-                console.log("billing:", billing);           
-              }
-            });
-
-            if (!response.success) {
-              console.log(
-                `Failed to register APP_UNINSTALLED webhook: ${response.result}`
-              );
-            }
-
-            // Redirect to app with shop parameter upon auth
-            server.context.client = await createClient(shop, accessToken);
-            await getSubscriptionUrl(ctx);
-            // ctx.redirect(`/?shop=${shop}&host=${host}`);
           },
         })
       );
