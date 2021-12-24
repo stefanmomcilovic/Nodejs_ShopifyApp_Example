@@ -128,7 +128,7 @@ sequelize.sync()
                 if(user){
                   return true;
                 }else{
-                  return false;
+                  return undefined;
                 }
               } catch(err) {
                 console.log(err);
