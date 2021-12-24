@@ -12,6 +12,10 @@ const Shopify_custom_session_storage = sequelize.define("shopify_custom_session_
       type: Sequelize.TEXT,
       allowNull: true
   },
+  shopId: {
+    type: Sequelize.TEXT,
+    allowNull: true
+  },
   shop: {
       type: Sequelize.TEXT,
       allowNull: true,

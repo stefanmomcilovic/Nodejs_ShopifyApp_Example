@@ -10,7 +10,7 @@ import bodyParser from "koa-bodyparser";
 import session from "koa-session";
 import cookies from "koa-cookie";
 import { storeCallback, loadCallback, deleteCallback } from "./custom-session";
-import { route } from "next/dist/next-server/server/router";
+import { createClient, getSubscriptionUrl } from "./handlers/index";
 const sequelize = require("./database/database");
 const { Shopify_custom_session_storage } = require("./../models/sequelizeModels");
 
@@ -78,18 +78,17 @@ sequelize.sync()
               topic: "APP_UNINSTALLED",
               webhookHandler: async (topic, shop, body) =>{
                 // return delete ACTIVE_SHOPIFY_SHOPS[shop];
-                Shopify_custom_session_storage.destroy({
+                let user = await Shopify_custom_session_storage.destroy({
                   where: {
                     shop: shop
                   }
-                })
-                .then(result => {
-                  return true;
-                })
-                .catch(err => {
-                  if(err) throw err;
-                  return false;
                 });
+
+                if(user.length > 0){
+                  return true;
+                }
+
+                return false;               
               }
             });
 
@@ -100,40 +99,43 @@ sequelize.sync()
             }
 
             // Redirect to app with shop parameter upon auth
+            // server.context.client = await createClient(shop, accessToken);
+            // await getSubscriptionUrl(ctx);
             ctx.redirect(`/?shop=${shop}&host=${host}`);
           },
         })
       );
       // Puting user data in state 
-      server.use(async (ctx, next) => {
-        try{
-          if(ctx.state.userData == null || ctx.state.userData == undefined){
-            const referer  = ctx.request.header.referer;
-            const urlParams = new URLSearchParams(referer);
-            const shopData =  urlParams.get('shop');
-            if(shopData != null && shopData != undefined){
-              let user = await Shopify_custom_session_storage.findAll({
-                raw: true,
-                where:{
-                  shop: shopData
-                },
-                limit:1
-              });
+      // server.use(async (ctx, next) => {
+      //   try{
+      //     if(ctx.state.userData == null || ctx.state.userData == undefined){
+      //       const referer  = ctx.request.header.referer;
+      //       const urlParams = new URLSearchParams(referer);
+      //       const shopData =  urlParams.get('shop');
+      //       if(shopData != null && shopData != undefined){
+      //         let user = await Shopify_custom_session_storage.findAll({
+      //           raw: true,
+      //           where:{
+      //             shop: shopData
+      //           },
+      //           limit:1
+      //         });
 
-              if(user.length > 0){
-                ctx.state.userData = {
-                  shop: shopData,
-                  accessToken: user[0].accessToken
-                };
-              }
-            }
-          }
-          await next();
-        }catch(err) {
-          ctx.status = 500;
-          ctx.body = "State is not available!";
-        }
-      }); 
+      //         if(user.length > 0){
+      //           ctx.state.userData = {
+      //             shop: shopData,
+      //             accessToken: user[0].accessToken
+      //           };
+      //         }
+      //       }
+      //     }
+
+      //     await next();
+      //   }catch(err) {
+      //     ctx.status = 500;
+      //     ctx.body = "State is not available!";
+      //   }
+      // }); 
       
       const handleRequest = async (ctx) => {
         await handle(ctx.req, ctx.res);
@@ -158,11 +160,13 @@ sequelize.sync()
         }
       );
 
-      router.post("/api", async (ctx) => {
+      router.post("/api", verifyRequest({ returnHeader: true }),
+       async (ctx) => {
         try{
           const action = `${ctx.request.body.data.action}`;
-          const { shop, accessToken } = ctx.state.userData;
-
+          const session = await Shopify.Utils.loadCurrentSession(ctx.req, ctx.res);
+          let shop = session.shop;
+          let accessToken = session.accessToken;
           let client;
           let data;
 
@@ -211,6 +215,13 @@ sequelize.sync()
         }
       });
 
+      router.post("/test", verifyRequest({ returnHeader: true }), async(ctx) => {
+        const session = await Shopify.Utils.loadCurrentSession(ctx.req, ctx.res);
+        console.log(session);
+        ctx.status = 200;
+        ctx.message = "Success!";
+      });
+
       // Handling errors //
       server.use(async (ctx, next) => {
         try {
@@ -227,15 +238,14 @@ sequelize.sync()
       router.get("(.*)", async function (ctx, next){
         try {
           const shop = ctx.query.shop;
-          let user = await Shopify_custom_session_storage.findAll({
+            let user = await Shopify_custom_session_storage.findAll({
               raw: true,
               where:{
                 shop: shop
               },
               limit:1
             });
-
-          //This shop hasn't been seen yet, go through OAuth to create a sessrsion
+            //This shop hasn't been seen yet, go through OAuth to create a sessrsion
           if (user.length == 0 || user[0].shop == undefined) {
             ctx.redirect(`/auth?shop=${shop}`);
           }else{
@@ -243,7 +253,6 @@ sequelize.sync()
             // ctx.cookies.set("accessToken", user[0].accessToken, { httpOnly: true, secure: true, sameSite: "none" });
             await handleRequest(ctx);
           }
-          
           // if (ACTIVE_SHOPIFY_SHOPS[shop] == undefined) {
           //   ctx.redirect(`/auth?shop=${shop}`);
           // } else {
@@ -251,7 +260,8 @@ sequelize.sync()
           // }
         } catch(err) {
           console.log(err);
-          throw err;
+          ctx.status = 500;
+          ctx.body = "Something went wrong, please try again later!";
         }
       });
 

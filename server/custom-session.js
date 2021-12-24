@@ -6,8 +6,15 @@ async function storeCallback(session){
     console.log('storeCallback session: ', session);
 
     try {
+        let shopId;
+
+        if(session.id.indexOf(`${session.shop}`) > -1){
+            shopId = session.id;
+        }
+
         let sessionData = await Shopify_custom_session_storage.upsert({
             sessionId: session.id,
+            shopId: shopId,
             shop: `${session.shop}`,
             state: `${session.state}`,
             scope: `${ '' +session.scope + ''}`,
@@ -41,7 +48,7 @@ async function loadCallback(id){
             where: {
                 [Op.or]: [
                     { sessionId: id },
-                    { shop: id }
+                    { shopId: id }
                 ]
             },
             raw: true
