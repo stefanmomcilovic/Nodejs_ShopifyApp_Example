@@ -50,6 +50,10 @@ sequelize.sync()
       const router = new Router();
 
       server.use(cors());
+      server.use(async (ctx, next) => {
+      if (ctx.path === '/webhooks') ctx.disableBodyParser = true;
+        await next();
+      });
       server.use(bodyParser());
       server.use(cookies());
       server.use(session({secure:true}, server));
