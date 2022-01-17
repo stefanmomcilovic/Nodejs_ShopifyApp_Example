@@ -41,8 +41,6 @@ async function loadCallback(id){
         let session = new Session(id);
         console.log('session', session);
 
-        
-
         let result = await Shopify_custom_session_storage.findAll({
             limit: 1,
             where: {
@@ -53,6 +51,7 @@ async function loadCallback(id){
             },
             raw: true
         });
+
         if(result.length > 0){
             console.log("---------------- RESULT ------------------");
             console.log(result);
@@ -82,20 +81,28 @@ async function loadCallback(id){
 }
 
 async function deleteCallback(id){
-    console.log('deleteCallback ID: ', id);Session
-    await Shopify_custom_session_storage.destroy({
-        limit: 1,
-        where: {
-            sessionId: id
+    try{
+        console.log('deleteCallback ID: ', id);
+
+        let deleteCall = await Shopify_custom_session_storage.destroy({
+            limit: 1,
+            where: {
+               [Op.or]: [
+                    { sessionId: id },
+                    { shopId: id }
+               ]
+            }
+        });
+
+        if(deleteCall){
+            return true;
+        }else{
+            return false;
         }
-    })
-    .then(result => {
-        return true;
-    })
-    .catch(err => {
+    }catch(err){
         if(err) throw err;
         return false;
-    });
+    }
 }
 
 module.exports = {

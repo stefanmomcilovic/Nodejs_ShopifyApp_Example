@@ -49,24 +49,7 @@ sequelize.sync()
       const server = new Koa();
       const router = new Router();
 
-      server.use(cors());
-      server.use(bodyParser());
-      server.use(cookies());
       server.use(session({secure:true}, server));
-      server.use(compress({
-        filter (content_type) {
-          return /text/i.test(content_type)
-        },
-        threshold: 2048,
-        gzip: {
-          flush: require('zlib').constants.Z_SYNC_FLUSH
-        },
-        deflate: {
-          flush: require('zlib').constants.Z_SYNC_FLUSH,
-        },
-        br: false // disable brotli
-      }));
-      server.use(logger());
 
       server.keys = [Shopify.Context.API_SECRET_KEY];
 
@@ -108,9 +91,6 @@ sequelize.sync()
                         shop: shop
                       }
                     });
-
-                    console.log("USER:", user);           
-                    console.log("billing:", billing);           
                   }
                 });
 
@@ -335,7 +315,28 @@ sequelize.sync()
           ctx.body = "Something went wrong, please try again later!";
         }
       });
-
+      
+      server.use(cors());
+      server.use(async (ctx, next) => {
+        if (ctx.path === '/webhooks') ctx.disableBodyParser = true;
+        await next();
+      });
+      server.use(bodyParser());
+      server.use(cookies());
+      server.use(compress({
+        filter (content_type) {
+          return /text/i.test(content_type)
+        },
+        threshold: 2048,
+        gzip: {
+          flush: require('zlib').constants.Z_SYNC_FLUSH
+        },
+        deflate: {
+          flush: require('zlib').constants.Z_SYNC_FLUSH,
+        },
+        br: false // disable brotli
+      }));
+      server.use(logger());
       server.use(router.allowedMethods());
       server.use(router.routes());
       server.listen(port, () => {
