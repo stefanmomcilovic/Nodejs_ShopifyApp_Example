@@ -50,7 +50,6 @@ sequelize.sync()
       const router = new Router();
 
       server.use(session({secure:true}, server));
-
       server.keys = [Shopify.Context.API_SECRET_KEY];
 
       server.use(
