@@ -245,7 +245,7 @@ sequelize.sync()
               limit:1
             });
             //This shop hasn't been seen yet, go through OAuth to create a sessrsion
-            if (user.length == 0 || user[0].shop == undefined) {
+            if ((user == null || undefined) || user.length == 0 || (user[0].shop == undefined || null)) {
               ctx.redirect(`/auth?shop=${shop}`);
             }else{
               // ctx.cookies.set("shop", user[0].shop, { httpOnly: true, secure: true, sameSite: "none"});
